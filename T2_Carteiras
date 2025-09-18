@@ -1,1 +1,273 @@
 # Trarefa 02 ADI - Prof João 
+
+#importando as bibliotecas
+import numpy as np
+import pandas as pd
+import yfinance as yf
+import matplotlib.pyplot as plt
+from scipy.optimize import minimize
+import warnings
+
+
+warnings.filterwarnings('ignore')
+
+dias_uteis = 252
+rf_anual = 0.02 # taxa livre de risco anual
+inicio = "2020-07-19"
+fim = "2025-07-19"
+capital_inicial = 35000.0
+
+# Definicao das carteiras principais
+bilhete = ['AAPL', 'GOOG', 'MSFT', 'AMZN', 'JPM']
+analise_comparativa = '^GSPC' # indice de referencia
+
+print("Iniciando a coleta de informaçoes... um momento.")
+ativos = bilhete + [analise_comparativa]
+dados = yf.download(ativos, start=inicio, end=fim, progress=False)
+if dados.empty:
+  raise RuntimeError('Falha ao obter dados. Verifique conexão.')
+
+print("Coleta concluída.")
+
+dados.info()
+
+# Utilizamos apenas os precos de fechamento. Representam o valor final do dia.
+precos = dados['Close']
+precos.columns = bilhete + ['SP']
+
+print(f"Foram obtidos {precos.shape[0]} registros. Período de {precos.index[0].date()} até {precos.index[-1].date()}.")
+
+normalizado = precos / precos.iloc[0] * 100
+
+plt.figure(figsize=(12,7))
+for col in normalizado.columns:
+  plt.plot(normalizado.index, normalizado[col], label=col)
+plt.title('Evolução dos Preços - Iniciando da mesma base (100)')
+plt.xlabel('Linha do tempo')
+plt.ylabel("Preco ajustado (base 100)")
+plt.legend()
+plt.grid(True, alpha=0.5)
+plt.show()
+
+# Interpretacao_1
+print("""
+A trajetória observada foi marcada por contrastes.
+Apple e Microsoft se destacaram, superando o índice de referência e mostrando uma liderança clara.
+A Amazon teve um percurso mais intenso, com fortes crescimentos, mas também correções significativas.
+O Google seguiu em linha com o mercado, de forma consistente e sem exageros.
+Já o JP Morgan apresentou um perfil mais estável, refletindo o comportamento típico do setor bancário.
+
+A pandemia de 2020 trouxe uma queda abrupta, um momento que ficou na memória.
+Logo depois, a recuperação foi rápida, impulsionada pelas políticas governamentais.
+Em 2022, a alta dos juros pesou sobre os preços e trouxe retração ao mercado.
+Mas, em 2023, os sinais de recuperação reacenderam expectativas mais otimistas
+""")
+
+# Calculo dos retornos logaritmicos diarios
+retorno = np.log(precos / precos.shift(1)).dropna()
+retorno.columns = bilhete + ['SP']
+
+# Serie temporal dos retornos
+plt.figure(figsize=(14,6))
+for t in bilhete:
+  plt.plot(retorno.index, retorno[t], alpha=0.5, label=t)
+plt.plot(retorno.index, retorno['SP'], color='black', linewidth=2, label='SP')
+plt.title("Retorno Logaritmicos")
+plt.xlabel("Tempo")
+plt.ylabel("Retorno por dia")
+plt.legend()
+plt.grid(True, alpha=0.4)
+plt.show()
+
+# Distribuicao de frequencia dos retornos
+plt.figure(figsize=(12,6))
+retorno[bilhete].plot(kind='hist', bins=50, alpha=0.7)
+plt.title("Distribuição de Retorno/Dia")
+plt.xlabel("Variação logarítmica diária")
+plt.ylabel("Frequência")
+plt.grid(True, alpha=0.3)
+plt.show()
+
+# Estatisticas principais
+estatisticas = retorno.describe().T[['mean','std']]
+estatisticas['retorno_porano'] = estatisticas['mean'] * 252
+estatisticas['volatilidade_porano'] = estatisticas['std'] * np.sqrt(252)
+estatisticas['sharpe'] = estatisticas['retorno_porano'] / estatisticas['volatilidade_porano']
+
+print("Resumo estatístico (simplificado):")
+print(estatisticas.round(4))
+
+# Interpretacao_2
+print("""
+O cenário observado é bastante interessante.
+A Amazon se destacou pela maior variação — muita energia, mas também marcada por instabilidade.
+O JP Morgan manteve um perfil mais contido, como é comum no setor financeiro.
+Apple e Microsoft seguiram em linha com o índice, mostrando equilíbrio.
+Já o Google ficou um pouco acima da média de risco.
+
+Os picos de volatilidade, por sua vez, sempre apareceram próximos a grandes eventos externos — crises, decisões políticas, mudanças inesperadas.
+É o retrato de um mercado em constante movimento, que nunca dorme.
+""")
+
+# Simulação das melhores carteiras.
+# Experimento Monte Carlo: probabilidade, estratégia e análise.
+# Cada carteira é um caminho possível. Algumas excelentes, outras frágeis.
+
+portfolio_size = 50000  # 50.000 carteiras
+bilhetes = len(bilhete)
+
+# Matriz de covariância por ano e retorno esperado
+cov_matrix = retorno[bilhete].cov() * 252
+expected_returns = retorno[bilhete].mean() * 252
+
+print("Matriz de covariância - por ano:")
+print(cov_matrix.round(4))
+
+np.random.seed(42)
+resultados = []
+
+for _ in range(portfolio_size):
+    pesos = np.random.random(bilhetes)
+    pesos /= np.sum(pesos)
+
+    port_retorno = np.dot(pesos, expected_returns)
+    port_risco = np.sqrt(np.dot(pesos.T, np.dot(cov_matrix, pesos)))
+
+    rf = 0.02  # taxa livre de risco
+    sharpe = (port_retorno - rf) / port_risco
+
+    resultados.append([port_retorno, port_risco, sharpe] + list(pesos))
+
+colunas = ['retorno','risco','sharpe'] + bilhete
+resultados_dataframe = pd.DataFrame( resultados, columns=colunas )
+
+# Visualizacao das carteiras simuladas
+plt.figure(figsize=(12,8))
+scatter = plt.scatter(resultados_dataframe['risco'], resultados_dataframe['retorno'],
+                      c=resultados_dataframe['sharpe'], cmap='viridis',
+                      s=10, alpha=0.6)
+plt.colorbar( scatter, label="Índice de Sharpe" )
+plt.title("Simulação Monte Carlo - 50.000 Carteiras",fontsize=14,fontweight="bold")
+plt.xlabel("Volatilidade por ano (Risco)")
+plt.ylabel("Retorno por ano")
+plt.grid( True, alpha=0.3 )
+
+# Carteiras especiais
+max_sharpe = resultados_dataframe.loc[resultados_dataframe['sharpe'].idxmax()]
+min_risco = resultados_dataframe.loc[resultados_dataframe['risco'].idxmin()]
+
+plt.scatter(max_sharpe['risco'], max_sharpe['retorno'],
+            color='red', marker='*', s=200, label='Índice de Sharpe - Máximo')
+plt.scatter(min_risco['risco'], min_risco['retorno'],
+            color='blue', marker='*', s=200, label='Menor Risco')
+plt.legend()
+plt.show()
+
+print("""
+O mapa das possibilidades é revelado.
+Cada ponto representa uma carteira. Algumas frágeis, outras promissoras.
+As estrelas indicam escolhas excepcionais.
+Índice de Sharpe - Máximo: equilíbrio raro entre risco e retorno.
+Menor risco: quase serena, porém com menor retorno.
+Monte Carlo nos lembra: o mercado oferece caminhos, não certezas.
+""")
+
+# Função de risco quadrático
+ret_log_assets = retorno[bilhete]
+mu_anual = ret_log_assets.mean() * 252
+cov_anual = ret_log_assets.cov() * 252
+n = bilhetes
+Sigma = cov_anual.values
+mu = mu_anual.values
+
+
+bounds = tuple((0, 1) for _ in range(n)) # sem short
+cons = ({'type': 'eq', 'fun': lambda w: np.sum(w) - 1},)
+
+# grade de retornos alvo
+target_rs = np.linspace(mu.min()*0.8, mu.max()*1.2, 100)
+front_risk = []
+front_ret = []
+for tr in target_rs:
+  cons_tr = (
+    {'type': 'eq', 'fun': lambda w: np.sum(w) - 1},
+    {'type': 'eq', 'fun': lambda w, mu=mu, tr=tr: np.dot(w, mu) - tr}
+  )
+  x0 = np.repeat(1.0 / n, n)
+  try:
+    res = minimize(lambda w: w.T @ Sigma @ w, x0, method='SLSQP', bounds=bounds, constraints=cons_tr)
+    if res.success:
+      w_opt = res.x
+      front_ret.append(np.dot(w_opt, mu))
+      front_risk.append(np.sqrt(w_opt.T @ Sigma @ w_opt))
+    else:
+      front_ret.append(np.nan)
+      front_risk.append(np.nan)
+  except Exception:
+    front_ret.append(np.nan)
+    front_risk.append(np.nan)
+
+# Plot com fronteira eficiente
+plt.figure(figsize=(12,8))
+plt.scatter(resultados_dataframe['risco'], resultados_dataframe['retorno'], c=resultados_dataframe['sharpe'], cmap='viridis', s=10, alpha=0.5)
+plt.plot(front_risk, front_ret, 'r--', linewidth=2, label='Fronteira Eficiente')
+plt.scatter(max_sharpe['risco'], max_sharpe['retorno'], color='red', marker='*', s=200, label='Max Sharpe')
+plt.legend()
+plt.xlabel('Risco (vol anual)')
+plt.ylabel('Retorno (anual)')
+plt.title('Carteiras simuladas e Fronteira Eficiente')
+plt.grid(True, alpha=0.3)
+plt.show()
+
+# Carteira ótima
+melhor = resultados_dataframe.loc[resultados_dataframe['sharpe'].idxmax()]
+print('\nCarteira com maior índice de Sharpe (amostra Monte Carlo):')
+print(melhor[['retorno', 'risco', 'sharpe']])
+print('\nPesos:')
+for t in bilhete:
+  print(f"{t}: {melhor[t]:.4f} ({melhor[t]*100:.2f}%)")
+
+# Para evolução do patrimônio usamos retornos simples diários
+ret_simple = np.exp(ret_log_assets) - 1
+pesos_opt = melhor[bilhete].values
+ret_port_daily = ret_simple.dot(pesos_opt)
+patrimonio = capital_inicial * (1 + ret_port_daily).cumprod()
+
+ret_acumulado = patrimonio.iloc[-1] / capital_inicial - 1
+print(f"Retorno acumulado no período: {ret_acumulado*100:.2f}%")
+
+rets_port = ret_port_daily.dropna()
+var_95_pct = -np.percentile(rets_port, 5) # perda esperada no pior 5%
+var_99_pct = -np.percentile(rets_port, 1)
+var_95_monet = var_95_pct * capital_inicial
+var_99_monet = var_99_pct * capital_inicial
+
+print('\nValue at Risk (VaR) - Histórico (1 dia):')
+print(f'VaR 95%: {var_95_pct*100:.2f}% -> R$ {var_95_monet:,.2f}')
+print(f'VaR 99%: {var_99_pct*100:.2f}% -> R$ {var_99_monet:,.2f}')
+
+# VaR via Monte Carlo (1 dia)
+NMC = 10000
+mu_daily = ret_simple.mean().values
+cov_daily = ret_simple.cov().values
+sims = np.random.multivariate_normal(mu_daily, cov_daily, size=NMC)
+sims_port = sims.dot(pesos_opt)
+var_mc_95 = -np.percentile(sims_port, 5)
+var_mc_99 = -np.percentile(sims_port, 1)
+print('\nVaR Monte Carlo (1 dia):')
+print(f'VaR MC 95%: {var_mc_95*100:.2f}% -> R$ {var_mc_95*capital_inicial:,.2f}')
+print(f'VaR MC 99%: {var_mc_99*100:.2f}% -> R$ {var_mc_99*capital_inicial:,.2f}')
+
+# Comparação com Benchmark
+ret_sp_anual = retorno['SP'].mean() * dias_uteis
+vol_sp_anual = retorno['SP'].std() * np.sqrt(dias_uteis)
+sharpe_sp = (ret_sp_anual - rf_anual) / vol_sp_anual
+
+print('\nBenchmark (S&P500) - anualizado:')
+print(f'Retorno anual: {ret_sp_anual:.4f}, Volatilidade anual: {vol_sp_anual:.4f}, Sharpe: {sharpe_sp:.4f}')
+print('\nComparação (Melhor carteira vs Benchmark):')
+print(f"Melhor carteira - Retorno: {melhor['retorno']:.4f}, Risco: {melhor['risco']:.4f}, Sharpe: {melhor['sharpe']:.4f}")
+if melhor['sharpe'] > sharpe_sp:
+  print('A melhor carteira superou o benchmark em termos de Sharpe.')
+else:
+  print('A melhor carteira não superou o benchmark em termos de Sharpe.')
