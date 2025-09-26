@@ -1,0 +1,133 @@
+# Trarefa 03 ADI - Prof João 
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+from scipy import stats
+
+df = pd.read_csv("AmesHousing.csv")
+
+#Dimensões do DataFrame
+print("Dimensões:", df.shape)
+
+df.info()
+
+# Primeiras linhas do DataFrame
+df.head()
+
+#Visualizando as variaveis qualitativas
+qualitativas = df.select_dtypes(include=["object", "category"])
+print(qualitativas.head())
+
+#Verificando valores faltantes
+missing = df.isna().sum()
+print("\nValores faltantes por coluna:")
+print(missing[missing > 0])
+
+plt.figure(figsize=(10,5))
+missing[missing > 0].sort_values(ascending=False).plot.bar()
+plt.title("Valores faltantes por coluna")
+plt.show()
+
+# Tratamento de dados ausentes
+num_cols = df.select_dtypes(include=[np.number]).columns
+cat_cols = df.select_dtypes(include=["object", "category"]).columns
+
+# variáveis numéricas (mediana)
+for col in num_cols:
+    if df[col].isna().sum() > 0:
+        df[col].fillna(df[col].median(), inplace=True)
+
+# variáveis categóricas
+for col in cat_cols:
+    if df[col].isna().sum() > 0:
+        # se o NaN representa ausência, usar "None"
+        if col in ["Alley", "PoolQC", "Fence", "FireplaceQu", "MiscFeature", "GarageType", "GarageFinish", "GarageQual", "GarageCond", "BsmtQual", "BsmtCond", "BsmtExposure", "BsmtFinType1", "BsmtFinType2", "MasVnrType"]:
+            df[col].fillna("None", inplace=True)
+        else:
+            # senão, preencher com a moda
+            df[col].fillna(df[col].mode()[0], inplace=True)
+
+#Validação do tratamento de dados ausentes
+missing = df.isna().sum()
+print("\nValores faltantes por coluna:")
+print(missing[missing > 0])
+
+df.info()
+
+# Distribuição Preço de Venda
+plt.figure(figsize=(8,5))
+sns.histplot(df["SalePrice"], bins=40, kde=True)
+plt.title("Distribuição Preço de Venda")
+plt.xlabel("Preço de Venda")
+plt.ylabel("Quantidade")
+plt.show()
+
+# Boxplot Preço de Venda
+plt.figure(figsize=(8,5))
+sns.boxplot(x=df["SalePrice"])
+plt.title("Boxplot Preço de Venda")
+plt.xlabel("Preço de Venda")
+plt.show()
+
+def analisar_categoria(df, var, target="SalePrice"):
+    print(f"\n>>> Análise de {var}\n")
+
+    data = df[[var, target]].dropna()
+
+    # Modelo ANOVA
+    modelo = ols(f"{target} ~ C({var})", data=data).fit()
+    anova_table = sm.stats.anova_lm(modelo, typ=2)
+    print("Tabela ANOVA:\n", anova_table, "\n")
+
+    # Médias por categoria
+    medias = data.groupby(var)[target].mean().sort_values(ascending=False)
+    print("Média de SalePrice por categoria (top 10):")
+    print(medias.head(10), "\n")
+
+    # Testes de pressupostos
+    residuos = modelo.resid
+
+    # Normalidade (Shapiro com amostra até 500 pontos)
+    shapiro_test = stats.shapiro(residuos.sample(500, random_state=42)) if len(residuos) > 500 else stats.shapiro(residuos)
+    print("Shapiro-Wilk (normalidade, até 500 amostras):", shapiro_test)
+    sm.qqplot(residuos, line='s')
+    plt.title(f"QQ-Plot resíduos ({var})")
+    plt.xlabel("Quantis Teóricos")
+    plt.ylabel("Quantis da Amostra")
+    plt.show()
+
+    # Homocedasticidade
+    grupos = [data.loc[data[var]==g, target] for g in data[var].unique()]
+    levene_test = stats.levene(*grupos)
+    print("Levene (homocedasticidade):", levene_test)
+
+    # Independência dos erros
+    dw = sm.stats.stattools.durbin_watson(residuos)
+    print("Durbin-Watson (independência):", dw, "\n")
+
+    # Quando os pressupostos não são atendidos, utiliza-se o teste de Kruskal-Wallis
+    if shapiro_test.pvalue < 0.05 or levene_test.pvalue < 0.05:
+        print("Pressupostos violados: aplicação do teste de Kruskal-Wallis\n")
+        kruskal = stats.kruskal(*grupos)
+        print("Resultado Kruskal-Wallis:", kruskal, "\n")
+    else:
+        print("Pressupostos atendidos: ANOVA tradicional é adequada\n")
+
+    # Boxplot (ordenado pelas médias)
+    plt.figure(figsize=(12,6))
+    sns.boxplot(x=var, y=target, data=data, order=medias.index)
+    plt.xticks(rotation=45)
+    plt.title(f"Distribuição de Preço de Venda por {var}")
+    plt.xlabel(var)
+    plt.ylabel("Preço de Venda")
+    plt.show()
+
+analisar_categoria(df, "Heating")
+
+analisar_categoria(df, "Neighborhood")
+
+analisar_categoria(df, "Street")
