@@ -117,3 +117,78 @@ print(f"R²: {r2_score(y_train, y_pred_train):.3f}")
 print(f"RMSE: {np.sqrt(mean_squared_error(y_train, y_pred_train)):.2f}")
 print(f"MAE: {mean_absolute_error(y_train, y_pred_train):.2f}")
 
+print("\nTeste")
+print(f"R²: {r2_score(y_test, y_pred_test):.3f}")
+print(f"RMSE: {np.sqrt(mean_squared_error(y_test, y_pred_test)):.2f}")
+print(f"MAE: {mean_absolute_error(y_test, y_pred_test):.2f}")
+
+coeficientes = pd.DataFrame({"Variável": X.columns, "Coeficiente": modelo.coef_})
+print("\nCoeficientes")
+print(coeficientes)
+
+X_int = X.copy()
+X_int["Qual_Rooms_Interaction"] = X_int["Overall Qual"] * X_int["TotRms AbvGrd"]
+
+X_train, X_test, y_train, y_test = train_test_split(X_int, y, test_size=0.3, random_state=42)
+
+modelo_interacao = sm.OLS(y_train, sm.add_constant(X_train)).fit()
+print("\nModelo com Interação")
+print(modelo_interacao.summary())
+
+p_val = modelo_interacao.pvalues["Qual_Rooms_Interaction"]
+coef = modelo_interacao.params["Qual_Rooms_Interaction"]
+
+if p_val < 0.05:
+    print(f"\nA interação é significativa (p={p_val:.3f}).")
+    print(f"O coeficiente da interação é {coef:.2f}, indicando que o efeito do número de quartos depende da qualidade geral.")
+else:
+    print(f"\nA interação não é significativa (p={p_val:.3f}).")
+
+X_const = sm.add_constant(X_train)
+modelo_sm = sm.OLS(y_train, X_const).fit()
+print("\nResumo do modelo (statsmodels):")
+print(modelo_sm.summary())
+
+residuos = modelo_sm.resid
+fitted = modelo_sm.fittedvalues
+
+stat, p_shapiro = shapiro(residuos)
+print(f"\nTeste Shapiro-Wilk: stat={stat:.3f}, p={p_shapiro:.3f}")
+if p_shapiro > 0.05:
+    print("Resíduos seguem normalidade")
+else:
+    print("Resíduos não normais")
+
+bp_test = het_breuschpagan(residuos, modelo_sm.model.exog)
+labels = ['LM Stat', 'LM p-val', 'F Stat', 'F p-val']
+print("\nTeste Breusch-Pagan:")
+print(dict(zip(labels, bp_test)))
+
+vif = pd.DataFrame()
+vif["Variável"] = X_const.columns
+vif["VIF"] = [variance_inflation_factor(X_const.values, i)
+              for i in range(X_const.shape[1])]
+print("\nVIF - Fator de Inflação da Variância:")
+print(vif)
+
+plt.figure(figsize=(6,4))
+sns.scatterplot(x=fitted, y=residuos)
+plt.axhline(0, color="red", linestyle="--")
+plt.xlabel("Valores Ajustados")
+plt.ylabel("Resíduos")
+plt.title("Resíduos vs Ajustados")
+plt.show()
+
+sm.qqplot(residuos, line='s')
+plt.title("QQ-Plot dos Resíduos")
+plt.xlabel("Quantis Teóricos")
+plt.ylabel("Quantis Amostrais")
+plt.show()
+
+plt.figure(figsize=(6,4))
+sns.histplot(residuos, kde=True)
+plt.title("Distribuição dos Resíduos")
+plt.xlabel("Valores dos Resíduos")
+plt.ylabel("Frequência")
+plt.show()
+
