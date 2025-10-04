@@ -1,0 +1,119 @@
+Tarefa Prof João
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import statsmodels.api as sm
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+from scipy.stats import shapiro
+from statsmodels.stats.diagnostic import het_breuschpagan
+
+df = pd.read_csv("AmesHousing.csv")
+
+#Dimensões do DataFrame
+print("Dimensões:", df.shape)
+
+df.info()
+
+# Primeiras linhas do DataFrame
+df.head()
+
+#Verificando valores faltantes
+missing = df.isna().sum()
+print("\nValores faltantes por coluna:")
+print(missing[missing > 0])
+
+plt.figure(figsize=(10,5))
+missing[missing > 0].sort_values(ascending=False).plot.bar()
+plt.title("Valores faltantes por coluna")
+plt.show()
+
+# Tratamento de dados ausentes
+num_cols = df.select_dtypes(include=[np.number]).columns
+cat_cols = df.select_dtypes(include=["object", "category"]).columns
+
+# variáveis numéricas (mediana)
+for col in num_cols:
+    if df[col].isna().sum() > 0:
+        df[col].fillna(df[col].median(), inplace=True)
+
+# variáveis categóricas
+for col in cat_cols:
+    if df[col].isna().sum() > 0:
+        # se o NaN representa ausência, usar "None"
+        if col in ["Alley", "PoolQC", "Fence", "FireplaceQu", "MiscFeature", "GarageType", "GarageFinish", "GarageQual", "GarageCond", "BsmtQual", "BsmtCond", "BsmtExposure", "BsmtFinType1", "BsmtFinType2", "MasVnrType"]:
+            df[col].fillna("None", inplace=True)
+        else:
+            # senão, preencher com a moda
+            df[col].fillna(df[col].mode()[0], inplace=True)
+
+#Validação do tratamento de dados ausentes
+missing = df.isna().sum()
+print("\nValores faltantes por coluna:")
+print(missing[missing > 0])
+
+df.info()
+
+# Distribuição Preço de Venda
+plt.figure(figsize=(8,5))
+sns.histplot(df["SalePrice"], bins=40, kde=True)
+plt.title("Distribuição Preço de Venda")
+plt.xlabel("Preço de Venda")
+plt.ylabel("Quantidade")
+plt.show()
+
+print("Preço médio:", df["SalePrice"].mean())
+print("Preço mediano:", df["SalePrice"].median())
+
+features_num = ["Gr Liv Area","Garage Cars", "Overall Qual", "TotRms AbvGrd"]
+plt.figure(figsize=(6,4))
+sns.scatterplot(x=df["Gr Liv Area"], y=df["SalePrice"], alpha=0.5)
+plt.title("Gr Liv Area vs SalePrice")
+plt.show()
+
+  plt.figure(figsize=(6,4))
+  sns.scatterplot(x=df["Garage Cars"], y=df["SalePrice"], alpha=0.5)
+  plt.title("Garage Cars vs SalePrice")
+  plt.show()
+
+plt.figure(figsize=(6,4))
+sns.scatterplot(x=df["Overall Qual"], y=df["SalePrice"], alpha=0.5)
+plt.title(f"{"Overall Qual"} vs SalePrice")
+plt.show()
+
+plt.figure(figsize=(6,4))
+sns.scatterplot(x=df["TotRms AbvGrd"], y=df["SalePrice"], alpha=0.5)
+plt.title("TotRms AbvGrd vs SalePrice")
+plt.show()
+
+plt.figure(figsize=(8,6))
+corr = df[features_num + ["SalePrice"]].corr()
+sns.heatmap(corr, annot=True, cmap="coolwarm", fmt=".2f")
+plt.title("Matriz de Correlação")
+plt.show()
+
+plt.figure(figsize=(8,5))
+sns.boxplot(x="Overall Qual", y="SalePrice", data=df)
+plt.title("Preço de Venda por Qualidade Geral")
+plt.show()
+
+plt.figure(figsize=(7,5))
+sns.scatterplot(x=df["Gr Liv Area"], y=df["SalePrice"])
+plt.title("Identificação de Outliers - Área Habitada")
+plt.show()
+
+X = df[["Overall Qual", "Gr Liv Area", "Garage Cars", "TotRms AbvGrd"]]
+y = df["SalePrice"]
+
+X = df[["Overall Qual", "Gr Liv Area", "Garage Cars", "TotRms AbvGrd"]]
+y = df["SalePrice"]
+
+print("Treino")
+print(f"R²: {r2_score(y_train, y_pred_train):.3f}")
+print(f"RMSE: {np.sqrt(mean_squared_error(y_train, y_pred_train)):.2f}")
+print(f"MAE: {mean_absolute_error(y_train, y_pred_train):.2f}")
+
