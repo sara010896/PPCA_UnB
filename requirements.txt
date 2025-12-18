@@ -1,5 +1,6 @@
-matplotlib
 streamlit
 pandas
+matplotlib
+shapely
 sqlalchemy
 mysql-connector-python
